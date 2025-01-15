@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Book Management SSE</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        #events {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+        }
+        .event {
+            margin: 8px 0;
+            padding: 10px;
+            border-radius: 4px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #ccc;
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .event.bookCreated { border-left-color: #28a745; }
+        .event.bookUpdated { border-left-color: #ffc107; }
+        .event.bookDeleted { border-left-color: #dc3545; }
+        .event.error { border-left-color: #dc3545; background-color: #fff3f3; }
+        .event.system { border-left-color: #17a2b8; }
+        .timestamp {
+            color: #666;
+            font-size: 0.8em;
+            margin-bottom: 5px;
+        }
+        .event-type {
+            font-weight: bold;
+            color: #333;
+        }
+        .book-data {
+            background-color: #fff;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 5px;
+        }
+        pre {
+            margin: 5px 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        #tokenInput {
+            width: 80%;
+            padding: 8px;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        #connectButton {
+            padding: 8px 16px;
+            font-size: 14px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #connectButton:disabled {
+            background-color: #ccc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Book Management SSE</h1>
+        
+        <div>
+            <input type="text" id="tokenInput" placeholder="Enter your token here" />
+            <button id="connectButton" onclick="connectSSE()">Connect</button>
+        </div>
+
+        <div id="events"></div>
+    </div>
+
+    <script>
+        let eventSource = null;
+
+        function connectSSE() {
+            const token = document.getElementById("tokenInput").value.trim();
+            if (!token) {
+                alert("Please enter a token.");
+                return;
+            }
+
+            document.getElementById("connectButton").disabled = true;
+
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            try {
+                console.log('Attempting to connect to SSE...');
+                eventSource = new EventSource(`/api/v1/sse/updates/stream?token=${encodeURIComponent(token)}`);
+
+                eventSource.onopen = function() {
+                    console.log('SSE connection opened');
+                    displayEvent('system', {
+                        timestamp: new Date().toISOString(),
+                        type: 'connection',
+                        message: 'SSE connection established'
+                    });
+                };
+
+                // Listen for bookOperation events
+                eventSource.addEventListener('bookOperation', function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('Received bookOperation:', data);
+                        displayEvent(data.type, data);
+                    } catch (error) {
+                        console.error('Error parsing event data:', error);
+                        displayEvent('error', { 
+                            timestamp: new Date().toISOString(),
+                            message: 'Error parsing event data' 
+                        });
+                    }
+                });
+
+                eventSource.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log("Received message:", data);
+                        displayEvent('message', data);
+                    } catch (error) {
+                        console.error('Error parsing message:', error);
+                    }
+                };
+
+                eventSource.onerror = function(error) {
+                    console.error('SSE Error:', error);
+                    displayEvent('error', {
+                        timestamp: new Date().toISOString(),
+                        message: 'Connection error occurred'
+                    });
+                    eventSource.close();
+                    document.getElementById("connectButton").disabled = false;
+                };
+
+            } catch (error) {
+                console.error('Connection error:', error);
+                alert('Failed to establish connection');
+                document.getElementById("connectButton").disabled = false;
+            }
+        }
+
+        function displayEvent(type, data) {
+            const eventsDiv = document.getElementById('events');
+            const eventDiv = document.createElement('div');
+            eventDiv.className = `event ${type}`;
+
+            let content = `
+                <div class="timestamp">${new Date(data.timestamp).toLocaleString()}</div>
+                <div class="event-type">${type.toUpperCase()}</div>
+                <div>${data.message}</div>`;
+
+            // Add book data if available
+            if (data.book_data) {
+                content += `
+                    <div class="book-data">
+                        <strong>Book Details:</strong>
+                        <pre>${JSON.stringify(data.book_data, null, 2)}</pre>
+                    </div>`;
+            }
+
+            eventDiv.innerHTML = content;
+            eventsDiv.insertBefore(eventDiv, eventsDiv.firstChild);
+        }
+    </script>
+</body>
+</html>
