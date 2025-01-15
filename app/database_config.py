@@ -17,25 +17,34 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import QueuePool
 
-# Database path configuration
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATABASE_PATH = os.path.join(BASE_DIR, "books (2).db")
-
 # Database URL configuration
-# TODO: In production, use environment variables for database credentials
-SQLALCHEMY_DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Handle Heroku PostgreSQL URL format
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+else:
+    # Fallback for local development
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    DATABASE_PATH = os.path.join(BASE_DIR, "books (2).db")
+    DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
 # Database engine configuration
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},  # SQLite specific
-    poolclass=QueuePool,
-    pool_size=5,  # Maximum number of database connections in the pool
-    max_overflow=10,  # Maximum number of connections that can be created beyond pool_size
-    pool_timeout=30,  # Seconds to wait before giving up on getting a connection
-    pool_recycle=1800,  # Recycle connections after 30 minutes
-    echo=False  # Set to True for SQL query logging
-)
+engine_args = {
+    "poolclass": QueuePool,
+    "pool_size": 5,
+    "max_overflow": 10,
+    "pool_timeout": 30,
+    "pool_recycle": 1800,
+    "echo": False
+}
+
+# Add SQLite-specific arguments only for SQLite
+if DATABASE_URL.startswith("sqlite"):
+    engine_args["connect_args"] = {"check_same_thread": False}
+
+# Database engine configuration
+engine = create_engine(DATABASE_URL, **engine_args)
 
 # Session configuration
 SessionLocal = sessionmaker(
